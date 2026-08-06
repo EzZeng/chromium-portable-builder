@@ -1,0 +1,41 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build / deploy
+dist/
+.vercel/
+.output/
+.nitro/
+node_modules/.nitro/
+.tanstack/
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# logs / caches
+*.log
+/tmp/
+.cache/
+.vite/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# agent / sandbox only
+.grok/
+artifacts/
+screenshots/*.png
+!screenshots/.gitkeep
+vendor/
+.node_modules.lock
+AGENTS.md
+AGENTS.project.md
+
+# generated (kept in repo for freestanding clone — routeTree.gen.ts is committed)
