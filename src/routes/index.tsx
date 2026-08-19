@@ -5,6 +5,8 @@ import {
   BookOpen,
   CheckCircle2,
   ChevronRight,
+  Cloud,
+  CloudOff,
   Cpu,
   Download,
   ExternalLink,
@@ -35,7 +37,10 @@ import {
 } from "@/lib/chromium-data";
 import {
   generateManualPortableReadme,
+  generateOfflinePortableReadme,
   generatePrebuiltPortableBat,
+  zipBasenameFromUrl,
+  type InstallMode,
 } from "@/lib/portable-prebuilt";
 import { cn, downloadTextFile } from "@/lib/utils";
 import { SignedIn, SignedOut, UserButton } from "@/lib/auth/gates";
@@ -62,6 +67,7 @@ function Home() {
   const [tab, setTab] = useState<TabId>("portable");
   const [cfg, setCfg] = useState<PortableConfig>(DEFAULT_CONFIG);
   const [source, setSource] = useState<SourceKind>("cft");
+  const [installMode, setInstallMode] = useState<InstallMode>("online");
   const [release, setRelease] = useState<ReleaseInfo | null>(null);
   const [releaseError, setReleaseError] = useState<string | null>(null);
   const [loadingRelease, setLoadingRelease] = useState(true);
@@ -107,19 +113,29 @@ function Home() {
       ? `Chromium snapshot Win_x64 r${release?.snapshotRevision ?? "latest"}`
       : `Chrome for Testing ${release?.version ?? "…"} (${release?.channel ?? "Stable"}) win64`;
 
+  const offline = installMode === "offline";
+  const expectedZipName = useMemo(() => zipBasenameFromUrl(zipUrl), [zipUrl]);
+  const setupBatFilename = offline
+    ? "ChromiumPortable-Setup-Offline.bat"
+    : "ChromiumPortable-Setup.bat";
+
   const setupBat = useMemo(
     () =>
       generatePrebuiltPortableBat({
         packageDir: cfg.packageDir,
         zipUrl,
         label: versionLabel,
+        mode: installMode,
       }),
-    [cfg.packageDir, zipUrl, versionLabel],
+    [cfg.packageDir, zipUrl, versionLabel, installMode],
   );
 
-  const manualReadme = useMemo(
-    () => generateManualPortableReadme(zipUrl, cfg.packageDir),
-    [zipUrl, cfg.packageDir],
+  const readme = useMemo(
+    () =>
+      offline
+        ? generateOfflinePortableReadme(zipUrl, cfg.packageDir)
+        : generateManualPortableReadme(zipUrl, cfg.packageDir),
+    [offline, zipUrl, cfg.packageDir],
   );
 
   const step =
@@ -142,8 +158,11 @@ function Home() {
   }
 
   function downloadPortableSetup() {
-    downloadTextFile("ChromiumPortable-Setup.bat", setupBat);
-    downloadTextFile("Portable-README.txt", manualReadme);
+    downloadTextFile(setupBatFilename, setupBat);
+    downloadTextFile(
+      offline ? "Portable-README-Offline.txt" : "Portable-README.txt",
+      readme,
+    );
   }
 
   return (
@@ -266,7 +285,7 @@ function Home() {
               <Stat
                 icon={<Terminal className="size-3.5" />}
                 label="需求"
-                value="curl + tar"
+                value={offline ? "本機 zip + tar" : "curl + tar"}
               />
               <Stat
                 icon={<Shield className="size-3.5" />}
@@ -337,6 +356,48 @@ function Home() {
               </div>
 
               <div className="mt-6">
+                <p className="mb-2 text-xs font-medium text-fg-muted">安裝方式</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <SourceCard
+                    active={!offline}
+                    title="線上安裝"
+                    subtitle="執行時自動下載（需網路）"
+                    icon={<Cloud className="size-4 text-accent" />}
+                    onClick={() => setInstallMode("online")}
+                  />
+                  <SourceCard
+                    active={offline}
+                    title="離線安裝"
+                    subtitle="自備 zip，目標機免網路"
+                    icon={<CloudOff className="size-4 text-accent" />}
+                    onClick={() => setInstallMode("offline")}
+                  />
+                </div>
+              </div>
+
+              {offline ? (
+                <div className="mt-4 rounded-[var(--radius-md)] border border-border bg-bg p-4 text-sm text-fg-muted">
+                  <p className="font-medium text-fg">離線安裝：先下載 zip</p>
+                  <p className="mt-1">
+                    在有網路的電腦下載官方 zip，建議另存為{" "}
+                    <code className="rounded bg-bg-subtle px-1 py-0.5 font-mono text-xs text-fg">
+                      {expectedZipName}
+                    </code>
+                    ，和離線腳本放在同一資料夾（或執行時把 zip 拖曳到 .bat 上）。
+                  </p>
+                  <a
+                    href={zipUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-flex items-center gap-1.5 text-xs text-fg underline decoration-border-strong underline-offset-4 hover:decoration-fg"
+                  >
+                    下載 {expectedZipName}
+                    <ExternalLink className="size-3" />
+                  </a>
+                </div>
+              ) : null}
+
+              <div className="mt-6">
                 <label className="block space-y-1.5">
                   <span className="text-xs font-medium text-fg-muted">
                     可攜目錄路徑（寫入腳本）
@@ -355,7 +416,7 @@ function Home() {
               <div className="mt-6 flex flex-wrap gap-2">
                 <Button type="button" onClick={downloadPortableSetup}>
                   <Download className="size-4" />
-                  下載 ChromiumPortable-Setup.bat
+                  下載 {setupBatFilename}
                 </Button>
                 <a
                   href={zipUrl}
@@ -363,30 +424,49 @@ function Home() {
                   rel="noreferrer"
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-border bg-bg-subtle px-4 text-sm font-medium text-fg transition-colors hover:border-border-strong"
                 >
-                  只下載 zip
+                  {offline ? `下載 ${expectedZipName}` : "只下載 zip"}
                   <ExternalLink className="size-3.5" />
                 </a>
               </div>
             </section>
 
             <section className="grid gap-4 lg:grid-cols-3">
-              {[
-                {
-                  n: "1",
-                  t: "下載腳本",
-                  d: "把 ChromiumPortable-Setup.bat 存到 Windows（例如桌面）。",
-                },
-                {
-                  n: "2",
-                  t: "雙擊執行",
-                  d: "腳本會下載官方 zip、解壓、複製到 App\\，並建立啟動器。",
-                },
-                {
-                  n: "3",
-                  t: "可攜使用",
-                  d: "之後只要跑 ChromiumPortable.bat；整包可拷到 USB。",
-                },
-              ].map((s) => (
+              {(offline
+                ? [
+                    {
+                      n: "1",
+                      t: "備妥檔案",
+                      d: `在有網路的電腦下載 ${expectedZipName}，和離線腳本放在同一資料夾，一起拷到目標機。`,
+                    },
+                    {
+                      n: "2",
+                      t: "離線執行",
+                      d: "在目標機雙擊離線 .bat（或把 zip 拖到 .bat 上）：就地解壓、複製到 App\\，全程免網路。",
+                    },
+                    {
+                      n: "3",
+                      t: "可攜使用",
+                      d: "之後只要跑 ChromiumPortable.bat；整包可拷到 USB。",
+                    },
+                  ]
+                : [
+                    {
+                      n: "1",
+                      t: "下載腳本",
+                      d: "把 ChromiumPortable-Setup.bat 存到 Windows（例如桌面）。",
+                    },
+                    {
+                      n: "2",
+                      t: "雙擊執行",
+                      d: "腳本會下載官方 zip、解壓、複製到 App\\，並建立啟動器。",
+                    },
+                    {
+                      n: "3",
+                      t: "可攜使用",
+                      d: "之後只要跑 ChromiumPortable.bat；整包可拷到 USB。",
+                    },
+                  ]
+              ).map((s) => (
                 <div
                   key={s.n}
                   className="rounded-[var(--radius-lg)] border border-border bg-bg-elevated p-4"
@@ -417,14 +497,14 @@ function Home() {
 
             <section className="min-w-0 rounded-[var(--radius-xl)] border border-border bg-bg-elevated p-5 sm:p-7">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold">Setup 腳本預覽</h3>
+                <h3 className="text-sm font-semibold">
+                  Setup 腳本預覽{offline ? "（離線）" : ""}
+                </h3>
                 <Button
                   type="button"
                   variant="secondary"
                   size="sm"
-                  onClick={() =>
-                    downloadTextFile("ChromiumPortable-Setup.bat", setupBat)
-                  }
+                  onClick={() => downloadTextFile(setupBatFilename, setupBat)}
                 >
                   <Download className="size-3.5" />
                   下載 .bat
@@ -432,9 +512,9 @@ function Home() {
               </div>
               <CodeBlock
                 code={setupBat}
-                filename="ChromiumPortable-Setup.bat"
+                filename={setupBatFilename}
                 language="batch"
-                label={versionLabel}
+                label={`${versionLabel}${offline ? " · offline" : ""}`}
               />
             </section>
 
@@ -730,11 +810,13 @@ function SourceCard({
   active,
   title,
   subtitle,
+  icon,
   onClick,
 }: {
   active: boolean;
   title: string;
   subtitle: string;
+  icon?: ReactNode;
   onClick: () => void;
 }) {
   return (
@@ -748,7 +830,10 @@ function SourceCard({
           : "border-border bg-bg hover:border-border-strong",
       )}
     >
-      <p className="text-sm font-medium text-fg">{title}</p>
+      <div className="flex items-center gap-2">
+        {icon}
+        <p className="text-sm font-medium text-fg">{title}</p>
+      </div>
       <p className="mt-0.5 text-xs text-fg-muted">{subtitle}</p>
     </button>
   );
